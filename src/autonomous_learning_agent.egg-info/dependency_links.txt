@@ -1,0 +1,6 @@
+# This file lists external dependency URLs for the autonomous learning agent.
+# Currently, no external dependency links are required.
+# Add URLs to additional Python packages or resources here if needed, one per line.
+# Example:
+# https://example.com/packages/custom-package-1.tar.gz
+

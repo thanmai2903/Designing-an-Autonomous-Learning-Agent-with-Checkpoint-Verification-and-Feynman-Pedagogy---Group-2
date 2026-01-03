@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "learning_agent": "./src/learning_graph.py:graph"
+  },
+  "env": ".env"
+}
