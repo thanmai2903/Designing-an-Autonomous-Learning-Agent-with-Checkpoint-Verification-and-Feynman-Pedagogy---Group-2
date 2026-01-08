@@ -4,3 +4,5 @@ __pycache__/
 .gitignore/
 .env/
 .env
+uv.lock/
+autonomous_learning_agent.egg-info/
