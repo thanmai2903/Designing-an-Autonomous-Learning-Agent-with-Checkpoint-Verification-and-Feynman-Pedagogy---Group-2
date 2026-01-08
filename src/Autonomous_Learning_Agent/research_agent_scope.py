@@ -1,19 +1,39 @@
+
+"""User Clarification and Research Brief Generation.
+
+This module implements the scoping phase of the research workflow, where we:
+1. Assess if the user's request needs clarification
+2. Generate a detailed research brief from the conversation
+
+The workflow uses structured output to make deterministic decisions about
+whether sufficient context exists to proceed with research.
+"""
+
 from datetime import datetime
-from email import message
-from urllib import response
-from langchain_core import messages
 from typing_extensions import Literal
+
 from langchain.chat_models import init_chat_model
-from langchain_core.messages import HumanMessage,AIMessage,get_buffer_string
-from langgraph.graph import StateGraph,START,END
+from langchain_core.messages import HumanMessage, AIMessage, get_buffer_string
+from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command
-from Autonomous_Learning_Agent.prompts import clarify_with_user_instructions,transform_messages_into_research_topic_prompt
+
+from Autonomous_Learning_Agent.prompts import clarify_with_user_instructions, transform_messages_into_research_topic_prompt
+from Autonomous_Learning_Agent.state_scope import AgentState, ClarifyWithUser, ResearchQuestion, AgentInputState
+
+# ===== UTILITY FUNCTIONS =====
 
 def get_today_str() -> str:
-    """Get current date in human readable format"""
-    return datetime.now().strftime("%a %b %#d,%Y")
+    from datetime import datetime
+    now = datetime.now()
+    return f"{now.strftime('%a %b')} {now.day}, {now.year}"
 
-model=init_chat_model("google_genai:models/gemini-flash-lite-latest")
+
+# ===== CONFIGURATION =====
+
+# Initialize model
+model = init_chat_model("google_genai:models/gemini-flash-lite-latest")
+
+# ===== WORKFLOW NODES =====
 
 def clarify_with_user(state: AgentState) -> Command[Literal["write_research_brief", "__end__"]]:
     """
@@ -56,7 +76,7 @@ def write_research_brief(state: AgentState):
     structured_output_model = model.with_structured_output(ResearchQuestion)
 
     # Generate research brief from conversation history
-    response =structured_output_model.invoke([
+    response = structured_output_model.invoke([
         HumanMessage(content=transform_messages_into_research_topic_prompt.format(
             messages=get_buffer_string(state.get("messages", [])),
             date=get_today_str()
@@ -68,10 +88,19 @@ def write_research_brief(state: AgentState):
         "research_brief": response.research_brief,
         "supervisor_messages": [HumanMessage(content=f"{response.research_brief}.")]
     }
-deep_research_builder=StateGraph(AgentState,input_schema=AgentInputState)
-deep_research_builder.add_node("clarify_with_user",clarify_with_user)
-deep_research_builder.add_node("write_research_brief",write_research_brief)
 
-deep_research_builder.add_edge(START,"clarify_with_user")
-deep_research_builder.add_edge("write_research_brief",END)
-# scope_research=deep_research_builder.compile()
+# ===== GRAPH CONSTRUCTION =====
+
+# Build the scoping workflow
+deep_researcher_builder = StateGraph(AgentState, input_schema=AgentInputState)
+
+# Add workflow nodes
+deep_researcher_builder.add_node("clarify_with_user", clarify_with_user)
+deep_researcher_builder.add_node("write_research_brief", write_research_brief)
+
+# Add workflow edges
+deep_researcher_builder.add_edge(START, "clarify_with_user")
+deep_researcher_builder.add_edge("write_research_brief", END)
+
+# Compile the workflow
+scope_research = deep_researcher_builder.compile()
