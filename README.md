@@ -1,8 +1,100 @@
 
+##  Quickstart 
 
-## 🚀 Quickstart 
+### Option 1: Docker (Recommended)
 
-### Prerequisites
+The fastest way to get started is using Docker. This includes all dependencies (Python 3.11, Node.js, uv) pre-configured.
+
+#### Prerequisites
+- [Docker](https://docs.docker.com/get-docker/) installed on your system
+- [Docker Compose](https://docs.docker.com/compose/install/) (usually included with Docker Desktop)
+
+#### Quick Start
+
+1. **Clone the repository:**
+```bash
+git clone https://github.com/langchain-ai/deep_research_from_scratch
+cd deep_research_from_scratch
+```
+
+2. **Create a `.env` file** with your API keys:
+```bash
+# Create .env file (or copy from .env.example)
+cp .env.example .env
+```
+
+Edit `.env` and add your API keys:
+```env
+# Required for research agents with external search
+TAVILY_API_KEY=your_tavily_api_key_here
+
+# Required for Google Gemini models
+GOOGLE_API_KEY=your_google_api_key_here
+
+# Optional: For LangSmith tracing
+LANGSMITH_TRACING=true
+LANGSMITH_PROJECT=deep_research_from_scratch
+```
+
+3. **Build and run the Docker container:**
+```bash
+# Build the image (first time only, or after changes)
+docker-compose build
+
+# Start the container
+docker-compose up -d
+```
+
+4. **Access the services:**
+
+| Service | URL |
+|---------|-----|
+| **LangGraph Studio** | https://smith.langchain.com/studio/?baseUrl=http://localhost:8000 |
+| **API Documentation** | http://localhost:8000/docs |
+| **API Root** | http://localhost:8000 |
+
+5. **View logs:**
+```bash
+docker-compose logs -f
+```
+
+6. **Stop the container:**
+```bash
+docker-compose down
+```
+
+#### Docker Commands Reference
+
+```bash
+# Build the image
+docker-compose build
+
+# Build without cache (after Dockerfile changes)
+docker-compose build --no-cache
+
+# Start in detached mode
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop containers
+docker-compose down
+
+# Stop and remove volumes
+docker-compose down -v
+
+# Rebuild and restart
+docker-compose down && docker-compose build && docker-compose up -d
+```
+
+---
+
+### Option 2: Local Installation
+
+If you prefer to run without Docker, follow these steps:
+
+#### Prerequisites
 
 - **Node.js and npx** (required for MCP server in notebook 3):
 ```bash
@@ -31,7 +123,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="/Users/$USER/.local/bin:$PATH"
 ```
 
-### Installation
+#### Installation
 
 1. Clone the repository:
 ```bash
@@ -55,17 +147,20 @@ Add your API keys to the `.env` file:
 # Required for research agents with external search
 TAVILY_API_KEY=your_tavily_api_key_here
 
-# Required for model usage
-OPENAI_API_KEY=your_openai_api_key_here
-ANTHROPIC_API_KEY=your_anthropic_api_key_here
+# Required for Google Gemini models
+GOOGLE_API_KEY=your_google_api_key_here
 
-# Optional: For evaluation and tracing
-LANGSMITH_API_KEY=your_langsmith_api_key_here
+# Optional: For LangSmith tracing
 LANGSMITH_TRACING=true
 LANGSMITH_PROJECT=deep_research_from_scratch
 ```
 
-4. Run notebooks or code using uv:
+4. Run the LangGraph server:
+```bash
+uvx --refresh --from "langgraph-cli[inmem]" --with-editable . --python 3.11 langgraph dev --allow-blocking
+```
+
+5. Or run notebooks using uv:
 ```bash
 # Run Jupyter notebooks directly
 uv run jupyter notebook
@@ -75,7 +170,7 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 jupyter notebook
 ```
 
-## Background 
+## Background  
 
 Research is an open‑ended task; the best strategy to answer a user request can’t be easily known in advance. Requests can require different research strategies and varying levels of search depth. Consider this request. 
 
