@@ -32,7 +32,7 @@ def get_today_str() -> str:
 # ===== CONFIGURATION =====
 
 # Initialize model
-model = init_chat_model("google_genai:models/gemini-flash-latest")
+model = init_chat_model("google_genai:models/gemini-2.5-flash")
 
 # ===== WORKFLOW NODES =====
 

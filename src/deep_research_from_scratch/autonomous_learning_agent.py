@@ -77,7 +77,8 @@ agent = deep_researcher_builder.compile()
 
 import uuid
 import operator
-from typing import TypedDict, List, Annotated, Literal
+from typing import List, Annotated, Literal
+from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import interrupt
 from pydantic import BaseModel, Field
