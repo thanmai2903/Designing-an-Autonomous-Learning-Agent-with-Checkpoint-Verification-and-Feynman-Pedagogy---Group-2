@@ -1,8 +1,7 @@
 {
     "dockerfile_lines": [],
     "graphs": {
-      "learning_agent": "./src/deep_research_from_scratch/learning_agent.py:learning_agent",
-      "deep_research_agent": "./src/deep_research_from_scratch/deep_research_agent.py:deep_researcher"
+      "learning_agent": "./src/deep_research_from_scratch/learning_agent.py:learning_agent"
     },
     "python_version": "3.11",
     "env": ".env",

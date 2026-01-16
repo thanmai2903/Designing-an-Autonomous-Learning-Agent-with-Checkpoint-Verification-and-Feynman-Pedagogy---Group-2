@@ -1,17 +1,42 @@
+"""Learning Agent with User Clarification and Adaptive Quiz System.
+
+This module implements:
+1. Auto-loading reports from the files directory
+2. User clarification to generate a detailed research brief
+3. Checkpoint-based learning with quizzes and remediation
+"""
+
 import uuid
-import operator
-from typing import List, Annotated, Literal
+from pathlib import Path
+from datetime import datetime
+from typing import List, Annotated, Literal, Optional, Sequence
 from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, START, END
-from langgraph.types import interrupt
+from langgraph.graph.message import add_messages
+from langgraph.types import interrupt, Command
 from pydantic import BaseModel, Field
 from langchain.chat_models import init_chat_model
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, get_buffer_string
+
+from deep_research_from_scratch.prompts import clarify_with_user_instructions, transform_messages_into_research_topic_prompt
+from deep_research_from_scratch.state_scope import ClarifyWithUser, ResearchQuestion
 
 # --- 1. SETUP MODEL ---
 # Ensure you have your API key set in env: GOOGLE_API_KEY
 model = init_chat_model("google_genai:models/gemini-2.5-flash-lite")
 
-# --- 2. DEFINE STATE SCHEMAS ---
+
+# --- 2. UTILITY FUNCTIONS ---
+
+def get_today_str() -> str:
+    """Get current date in a human-readable format."""
+    try:
+        return datetime.now().strftime("%a %b %#d, %Y")
+    except ValueError:
+        return datetime.now().strftime("%a %b %-d, %Y")
+
+
+# --- 3. DEFINE STATE SCHEMAS ---
 
 class Checkpoint(TypedDict):
     id: str
@@ -29,13 +54,25 @@ class Checkpoint(TypedDict):
     # Simplified teaching fields (populated by Node 5)
     simplified_material: str
 
-class State(TypedDict):
-    report: str
-    user_request: str
-    checkpoints: list[Checkpoint]
-    current_checkpoint_index: int 
 
-# --- 3. DEFINE PYDANTIC MODELS (LLM INTERFACE) ---
+class State(TypedDict):
+    # Report loaded from files directory
+    report: str
+    # Messages for user clarification
+    messages: Annotated[Sequence[BaseMessage], add_messages]
+    # Research brief generated from clarification (becomes user_request)
+    research_brief: Optional[str]
+    user_request: str
+    # Learning checkpoints
+    checkpoints: list[Checkpoint]
+    current_checkpoint_index: int
+
+
+class InputState(TypedDict):
+    """Input state - user only provides messages."""
+    messages: Annotated[Sequence[BaseMessage], add_messages] 
+
+# --- 4. DEFINE PYDANTIC MODELS (LLM INTERFACE) ---
 
 # Schema for Node 1 (Structure)
 class CheckpointItem(BaseModel):
@@ -67,7 +104,97 @@ evaluator_gen = model.with_structured_output(EvaluationResult)
 simplified_gen = model.with_structured_output(SimplifiedContent)
 
 
-# --- 4. DEFINE NODES ---
+# --- 5. DEFINE NODES ---
+
+def load_report(state: State):
+    """Node 0: Loads the latest markdown file from the files directory."""
+    print("--- Loading Report from Files Directory ---")
+    
+    # Get the files directory path (relative to this module)
+    files_dir = Path(__file__).parent / "files"
+    
+    if not files_dir.exists():
+        raise FileNotFoundError(f"Files directory not found: {files_dir}")
+    
+    # Find all markdown files
+    md_files = list(files_dir.glob("*.md"))
+    
+    if not md_files:
+        raise FileNotFoundError(f"No markdown files found in: {files_dir}")
+    
+    # Get the latest file by modification time
+    latest_file = max(md_files, key=lambda f: f.stat().st_mtime)
+    
+    print(f"Loading file: {latest_file.name}")
+    
+    # Read the file content
+    report_content = latest_file.read_text(encoding="utf-8")
+    
+    return {"report": report_content}
+
+
+def clarify_with_user(state: State) -> Command[Literal["write_research_brief", "__end__"]]:
+    """
+    Determine if the user's request contains sufficient information to proceed.
+    
+    Uses structured output to make deterministic decisions and avoid hallucination.
+    Routes to either research brief generation or ends with a clarification question.
+    """
+    print("--- Clarifying with User ---")
+    
+    # Set up structured output model
+    structured_output_model = model.with_structured_output(ClarifyWithUser)
+    
+    # Invoke the model with clarification instructions
+    response = structured_output_model.invoke([
+        HumanMessage(content=clarify_with_user_instructions.format(
+            messages=get_buffer_string(messages=state["messages"]), 
+            date=get_today_str()
+        ))
+    ])
+    
+    # Route based on clarification need
+    if response.need_clarification:
+        print(f"Need clarification: {response.question}")
+        return Command(
+            goto=END, 
+            update={"messages": [AIMessage(content=response.question)]}
+        )
+    else:
+        print("Sufficient info, proceeding to write research brief")
+        return Command(
+            goto="write_research_brief", 
+            update={"messages": [AIMessage(content=response.verification)]}
+        )
+
+
+def write_research_brief(state: State):
+    """
+    Transform the conversation history into a comprehensive research brief.
+    
+    The research_brief becomes the user_request for the learning pipeline.
+    """
+    print("--- Writing Research Brief ---")
+    
+    # Set up structured output model
+    structured_output_model = model.with_structured_output(ResearchQuestion)
+    
+    # Generate research brief from conversation history
+    response = structured_output_model.invoke([
+        HumanMessage(content=transform_messages_into_research_topic_prompt.format(
+            messages=get_buffer_string(state.get("messages", [])),
+            date=get_today_str()
+        ))
+    ])
+    
+    print(f"Research brief: {response.research_brief[:100]}...")
+    
+    # Map research_brief to user_request for the learning pipeline
+    return {
+        "research_brief": response.research_brief,
+        "user_request": response.research_brief
+    }
+
 
 def generate_structure(state: State):
     """Node 1: Breaks the report down into topics (No content yet)."""
@@ -249,7 +376,7 @@ Create a simplified explanation that helps the student understand the concept:""
     return {"checkpoints": checkpoints}
 
 
-# --- 5. ROUTING LOGIC ---
+# --- 6. ROUTING LOGIC ---
 
 def decide_next_step(state: State) -> Literal["administer_quiz", "simplified_teaching", END]:
     idx = state["current_checkpoint_index"]
@@ -270,11 +397,14 @@ def decide_next_step(state: State) -> Literal["administer_quiz", "simplified_tea
     return "administer_quiz"
 
 
-# --- 6. BUILD GRAPH ---
+# --- 7. BUILD GRAPH ---
 
-builder = StateGraph(State)
+builder = StateGraph(State, input=InputState)
 
 # Add Nodes
+builder.add_node("load_report", load_report)
+builder.add_node("clarify_with_user", clarify_with_user)
+builder.add_node("write_research_brief", write_research_brief)
 builder.add_node("generate_structure", generate_structure)
 builder.add_node("create_content", create_content)
 builder.add_node("administer_quiz", administer_quiz)
@@ -282,11 +412,14 @@ builder.add_node("evaluate_submission", evaluate_submission)
 builder.add_node("simplified_teaching", simplified_teaching)
 
 # Add Edges
-builder.add_edge(START, "generate_structure")
+builder.add_edge(START, "load_report")
+builder.add_edge("load_report", "clarify_with_user")
+# clarify_with_user uses Command() to route to write_research_brief or END
+builder.add_edge("write_research_brief", "generate_structure")
 builder.add_edge("generate_structure", "create_content")
-builder.add_edge("create_content", "administer_quiz") # Start 1st quiz
+builder.add_edge("create_content", "administer_quiz")  # Start 1st quiz
 builder.add_edge("administer_quiz", "evaluate_submission")
-builder.add_edge("simplified_teaching", "administer_quiz") # Retry loop
+builder.add_edge("simplified_teaching", "administer_quiz")  # Retry loop
 
 # Add Conditional Edge
 builder.add_conditional_edges(
