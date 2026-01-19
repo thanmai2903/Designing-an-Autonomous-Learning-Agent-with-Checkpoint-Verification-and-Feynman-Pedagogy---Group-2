@@ -13,7 +13,7 @@ The fastest way to get started is using Docker. This includes all dependencies (
 
 1. **Clone the repository:**
 ```bash
-git clone https://github.com/langchain-ai/deep_research_from_scratch
+git clone https://github.com/springboardmentor425/Designing-an-Autonomous-Learning-Agent-with-Checkpoint-Verification-and-Feynman-Pedagogy---Group-2.git
 cd deep_research_from_scratch
 ```
 
